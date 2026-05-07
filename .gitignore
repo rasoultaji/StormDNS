@@ -24,3 +24,4 @@ build/
 .gocache
 .bench/
 dist
+.opencode/
