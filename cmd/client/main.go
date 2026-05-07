@@ -131,6 +131,8 @@ func main() {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	app.StartAPIServer(sigCtx)
+
 	if err := app.Run(sigCtx); err != nil {
 		if log != nil {
 			log.Errorf("Runtime error: %v", err)

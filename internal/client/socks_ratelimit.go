@@ -179,7 +179,22 @@ func (r *socksRateLimiter) RecordSuccess(ip string) {
 	r.mu.Unlock()
 }
 
-// Reset clears all accumulated SOCKS auth rate-limit state in place.
+func (r *socksRateLimiter) BlockedCount() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now()
+	count := 0
+	for _, rec := range r.records {
+		if !rec.banUntil.IsZero() && now.Before(rec.banUntil) {
+			count++
+		}
+	}
+	return count
+}
+
 func (r *socksRateLimiter) Reset() {
 	if r == nil {
 		return

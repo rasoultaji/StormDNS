@@ -421,6 +421,22 @@ func (b *Balancer) statsForKey(serverKey string) *connectionStats {
 	return snap.stats[idx]
 }
 
+func (b *Balancer) StatsForKey(serverKey string) *connectionStats {
+	return b.statsForKey(serverKey)
+}
+
+func (s *connectionStats) Sent() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sent
+}
+
+func (s *connectionStats) Acked() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.acked
+}
+
 func normalizeRequiredCount(validCount, requiredCount, defaultIfInvalid int) int {
 	if validCount <= 0 {
 		return 0

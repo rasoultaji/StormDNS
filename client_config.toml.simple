@@ -429,5 +429,30 @@ LOG_SCAN_MAX_RESOLVERS = 0
 LOG_BASED_MTU_VERIFY = true
 
 # ------------------------------------------------------------------------------
+# 11) Local HTTP API
+# What this section does:
+# - Exposes a read-only HTTP API on localhost so that external tools (e.g. a
+#   monitoring dashboard, a mobile companion app) can inspect the client's
+#   runtime state.
+# - Only the /api/v1/stop, /api/v1/restart-session, and /api/v1/restart
+#   endpoints accept write operations. All others are read-only.
+# - See docs/API.md for the complete endpoint reference.
+# ------------------------------------------------------------------------------
+
+# Enable or disable the local HTTP API entirely.
+# When false, the HTTP listener is not started.
+API_ENABLED = true
+
+# IP address the API server binds to.
+# Use "127.0.0.1" for local-only access (recommended).
+# Change to "0.0.0.0" only if you need LAN access and understand the risks.
+API_LISTEN_ADDRESS = "127.0.0.1"
+
+# TCP port for the API server.
+# Must not conflict with LISTEN_PORT or LOCAL_DNS_PORT.
+# Default: 9157
+API_LISTEN_PORT = 9157
+
+# ------------------------------------------------------------------------------
 
 CONFIG_VERSION = "1"

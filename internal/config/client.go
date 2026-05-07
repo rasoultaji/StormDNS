@@ -117,6 +117,9 @@ type ClientConfig struct {
 	LogScanMaxDays                        int               `toml:"LOG_SCAN_MAX_DAYS"`
 	LogScanMaxResolvers                   int               `toml:"LOG_SCAN_MAX_RESOLVERS"`
 	LogBasedMTUVerify                     bool              `toml:"LOG_BASED_MTU_VERIFY"`
+	APIEnabled                            bool              `toml:"API_ENABLED"`
+	APIListenAddress                      string            `toml:"API_LISTEN_ADDRESS"`
+	APIListenPort                         int               `toml:"API_LISTEN_PORT"`
 	MaxPacketsPerBatch                    int               `toml:"MAX_PACKETS_PER_BATCH"`
 	ARQWindowSize                         int               `toml:"ARQ_WINDOW_SIZE"`
 	ARQInitialRTOSeconds                  float64           `toml:"ARQ_INITIAL_RTO_SECONDS"`
@@ -230,6 +233,9 @@ func defaultClientConfig() ClientConfig {
 		LogDir:                                "logs",
 		LogFileName:                           "stormdns_{time}.log",
 		StatsReportIntervalSeconds:            5.0,
+		APIEnabled:                            true,
+		APIListenAddress:                      "127.0.0.1",
+		APIListenPort:                         9157,
 		StartupMode:                           "logs",
 		LogScanMaxDays:                        30,
 		LogScanMaxResolvers:                   0,
@@ -513,6 +519,17 @@ func finalizeClientConfig(cfg ClientConfig) (ClientConfig, error) {
 	}
 	if cfg.StatsReportIntervalSeconds > 0 {
 		cfg.StatsReportIntervalSeconds = clampFloat(cfg.StatsReportIntervalSeconds, 1.0, 3600.0)
+	}
+
+	cfg.APIListenAddress = defaultString(strings.TrimSpace(cfg.APIListenAddress), "127.0.0.1")
+	if cfg.APIListenPort < 0 || cfg.APIListenPort > 65535 {
+		return cfg, fmt.Errorf("invalid API_LISTEN_PORT: %d", cfg.APIListenPort)
+	}
+	if cfg.APIEnabled && cfg.APIListenPort == cfg.ListenPort {
+		return cfg, fmt.Errorf("API_LISTEN_PORT (%d) conflicts with LISTEN_PORT (%d)", cfg.APIListenPort, cfg.ListenPort)
+	}
+	if cfg.APIEnabled && cfg.LocalDNSEnabled && cfg.APIListenPort == cfg.LocalDNSPort {
+		return cfg, fmt.Errorf("API_LISTEN_PORT (%d) conflicts with LOCAL_DNS_PORT (%d)", cfg.APIListenPort, cfg.LocalDNSPort)
 	}
 
 	cfg.EncryptionKey = strings.TrimSpace(cfg.EncryptionKey)
