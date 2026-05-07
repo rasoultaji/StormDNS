@@ -156,6 +156,7 @@ The installer also accepts the following options, which can be passed directly t
 | Option | Description |
 | --- | --- |
 | `-v <VERSION>`, `--version <VERSION>` | Install a specific StormDNS release tag (e.g. `v1.2.3`) instead of the latest release. |
+| `-l`, `--local` | Local/offline install: use the server binary and `server_config.toml` found in the current directory or `dist/`. No download from GitHub is performed. Requires a prior local build (`python build.py`). |
 | `-u`, `--uninstall` | Uninstall StormDNS: stop and remove the `stormdns` systemd service, drop the kernel/limit tunings, and clean up the binary, `server_config.toml`, and `encrypt_key.txt` in the current directory. |
 | `-h`, `--help` | Show usage help and exit. |
 
@@ -165,11 +166,43 @@ Examples:
 # Install a specific release version:
 bash <(curl -Ls https://raw.githubusercontent.com/nullroute1970/StormDNS/main/server_linux_install.sh) --version v1.2.3
 
+# Local/offline install for testing (from the repo root):
+python build.py
+sudo bash server_linux_install.sh --local
+
 # Uninstall StormDNS (run from the same directory used during installation):
 bash <(curl -Ls https://raw.githubusercontent.com/nullroute1970/StormDNS/main/server_linux_install.sh) --uninstall
 ```
 
 > Note: For uninstall, run the command from the same working directory where StormDNS was originally installed so the script can locate the binary, config file, and encryption key.
+
+#### Step 1.2.3: 🧪 Local / Offline Install for Testing
+
+If you are developing or testing StormDNS and want to install directly from locally built files without downloading from GitHub, use the `--local` flag.
+
+**Prerequisite:** build the project first:
+
+```bash
+python build.py
+```
+
+This creates binaries in `dist/`, for example `dist/StormDNS_Server_Linux_amd64` and `dist/server_config.toml`.
+
+**Run the local installer** from the repository root (where `server_linux_install.sh` is located):
+
+```bash
+sudo bash server_linux_install.sh --local
+```
+
+The script will:
+- Search for the server binary matching your architecture in the current directory and `dist/`
+- Copy `server_config.toml` from `dist/` or create it from `server_config.toml.simple`
+- Skip downloading from GitHub and installing packages
+- Proceed with port 53 management, firewall, kernel tuning, and systemd service setup as usual
+
+> 💡 Tip: Use this mode for rapid testing and development cycles. Just re-run `python build.py && sudo bash server_linux_install.sh --local` after making changes.
+
+---
 
 #### Step 1.2.2: Important Notes After Installation
 
