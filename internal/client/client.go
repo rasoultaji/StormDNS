@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"sync"
@@ -145,6 +146,18 @@ type Client struct {
 
 	// SOCKS5 brute-force rate limiter
 	socksRateLimit *socksRateLimiter
+
+	// HTTP API server
+	apiSrv      *http.Server
+	apiWriteCh  chan apiWriteCommand
+
+	// Uptime tracking (set when Run starts)
+	startedAt time.Time
+
+	// Traffic speed tracking for API (atomic snapshots)
+	apiLastTXBytes   atomic.Uint64
+	apiLastRXBytes   atomic.Uint64
+	apiLastSpeedTime atomic.Int64
 }
 
 // clientStreamTXPacket represents a queued packet pending transmission or retransmission.
@@ -371,6 +384,7 @@ func New(cfg config.ClientConfig, log *logger.Logger, codec *security.Codec) *Cl
 		orphanQueue:            mlq.New[VpnProto.Packet](cfg.OrphanQueueInitialCapacity),
 		sessionResetSignal:     make(chan struct{}, 1),
 		socksRateLimit:         newSocksRateLimiter(),
+		apiWriteCh:             make(chan apiWriteCommand, 4),
 	}
 
 	if c.streamResolverFailoverResendThreshold < 1 {
@@ -405,6 +419,7 @@ func (c *Client) nextSessionInitRetryDelay(failures int) time.Duration {
 // Run starts the main execution loop of the client.
 func (c *Client) Run(ctx context.Context) error {
 	c.successMTUChecks = false
+	c.startedAt = time.Now()
 	c.log.Infof("\U0001F504 <cyan>Starting main runtime loop...</cyan>")
 	sessionInitRetryDelay := time.Duration(0)
 	sessionInitRetryFailures := 0
@@ -530,6 +545,26 @@ func (c *Client) Run(ctx context.Context) error {
 				case <-time.After(sessionInitRetryDelay):
 				}
 				continue
+			case cmd := <-c.apiWriteCh:
+				switch cmd {
+				case apiCmdStop:
+					c.log.Infof("<yellow>API: stopping client</yellow>")
+					c.notifySessionCloseBurst(time.Second)
+					c.StopAsyncRuntime()
+					return nil
+				case apiCmdRestartSession:
+					c.log.Infof("<yellow>API: restarting session</yellow>")
+					c.StopAsyncRuntime()
+					c.resetSessionState(true)
+					c.clearRuntimeResetRequest()
+					sessionInitRetryFailures = 0
+					sessionInitRetryDelay = 0
+				case apiCmdRestartProcess:
+					c.log.Infof("<yellow>API: restarting process</yellow>")
+					c.notifySessionCloseBurst(time.Second)
+					c.StopAsyncRuntime()
+					restartProcess()
+				}
 			case <-time.After(1 * time.Second):
 			}
 		}
