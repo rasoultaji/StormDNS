@@ -50,12 +50,6 @@ log_info "Installation directory: $INSTALL_DIR"
 cd "$INSTALL_DIR" || log_error "Cannot access install directory: $INSTALL_DIR"
 
 echo -e "${MAGENTA}${BOLD}"
-echo "  __  __           _             _____  _   _  _____ "
-echo " |  \/  |         | |           |  __ \| \ | |/ ____|"
-echo " | \  / | __ _ ___| |_ ___ _ __ | |  | |  \| | (___  "
-echo " | |\/| |/ _\` / __| __/ _ \ '__|| |  | | . \ |\___ \ "
-echo " | |  | | (_| \__ \ ||  __/ |   | |__| | |\  |____) |"
-echo " |_|  |_|\__,_|___/\__\___|_|   |_____/|_| \_|_____/ "
 echo -e "          StormDNS Client Auto-Installer${NC}"
 echo -e "${CYAN}------------------------------------------------------${NC}"
 

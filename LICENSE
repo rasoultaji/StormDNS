@@ -1,6 +1,26 @@
+Notices and Attribution
+
+StormDNS is an independent fork / derivative of MasterDnsVPN.
+
+Original project:
+- MasterDnsVPN
+- Original author: Amin Mahmoudi
+- License: MIT License
+
+StormDNS modifications:
+- Maintained by: NullRoute1970
+- License: MIT License
+
+This project preserves the MIT License terms of the original project and adds
+independent modifications under the same license.
+
 MIT License
 
+Original work:
 Copyright (c) 2026 Amin Mahmoudi
+
+Modifications and derivative work:
+Copyright (c) 2026 NullRoute1970
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

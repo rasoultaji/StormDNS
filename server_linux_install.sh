@@ -96,6 +96,50 @@ select_release_artifact() {
   URL="${base_url}/${PREFIX}.zip"
 }
 
+find_local_server_binary() {
+  local arch="$1"
+  local search_dirs=("$INSTALL_DIR" "$INSTALL_DIR/dist")
+  local pat
+
+  case "$arch" in
+    x86_64|amd64) pat="_(A|a)(M|m)(D|d)64" ;;
+    aarch64|arm64) pat="_(A|a)(R|r)(M|m)64" ;;
+    armv7l|armv7|armhf) pat="_(A|a)(R|r)(M|m)(V|v)7" ;;
+    i386|i486|i586|i686|x86) pat="_(X|x)86" ;;
+    *) log_error "Unsupported architecture: $arch" ;;
+  esac
+
+  for sd in "${search_dirs[@]}"; do
+    [[ -d "$sd" ]] || continue
+    local found
+    found="$(find "$sd" -maxdepth 1 -name "StormDNS_Server_Linux*" -type f 2>/dev/null | grep -E "$pat" | xargs ls -t 2>/dev/null | head -n1)"
+    if [[ -n "$found" ]]; then
+      echo "$found"
+      return 0
+    fi
+  done
+  return 1
+}
+
+find_local_config() {
+  local search_dirs=("$INSTALL_DIR" "$INSTALL_DIR/dist")
+
+  for sd in "${search_dirs[@]}"; do
+    if [[ -f "$sd/server_config.toml" ]]; then
+      echo "$sd/server_config.toml"
+      return 0
+    fi
+  done
+
+  if [[ -f "$INSTALL_DIR/server_config.toml.simple" ]]; then
+    cp "$INSTALL_DIR/server_config.toml.simple" "$INSTALL_DIR/server_config.toml"
+    echo "$INSTALL_DIR/server_config.toml"
+    return 0
+  fi
+
+  return 1
+}
+
 print_usage() {
   cat <<'USAGE'
 StormDNS Server Linux Installer
@@ -106,6 +150,9 @@ Usage:
 Options:
   -v, --version <VERSION>   Install a specific StormDNS release (tag), e.g. v1.2.3.
                             If omitted, the latest release is installed.
+  -l, --local               Local/offline install: use the server binary and
+                            config found in the current directory (or dist/).
+                            No download from GitHub is performed.
   -u, --uninstall           Uninstall StormDNS: stop and remove the systemd
                             service, drop kernel/limit tunings, and clean up
                             binaries and config files in the install directory.
@@ -118,6 +165,10 @@ Examples:
   # Install a specific release version:
   bash <(curl -Ls https://raw.githubusercontent.com/nullroute1970/StormDNS/main/server_linux_install.sh) --version v1.2.3
 
+  # Local/offline install for testing:
+  python build.py
+  sudo bash server_linux_install.sh --local
+
   # Uninstall StormDNS:
   bash <(curl -Ls https://raw.githubusercontent.com/nullroute1970/StormDNS/main/server_linux_install.sh) --uninstall
 USAGE
@@ -125,6 +176,7 @@ USAGE
 
 ACTION="install"
 TARGET_VERSION=""
+LOCAL_MODE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--version)
@@ -138,6 +190,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -u|--uninstall)
       ACTION="uninstall"
+      shift
+      ;;
+    -l|--local)
+      LOCAL_MODE=1
       shift
       ;;
     -h|--help)
@@ -155,6 +211,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$LOCAL_MODE" -eq 1 && -n "$TARGET_VERSION" ]]; then
+  echo "Error: --local cannot be combined with --version" >&2
+  exit 2
+fi
 
 if [[ "$ACTION" == "uninstall" && -n "$TARGET_VERSION" ]]; then
   echo "Error: --version cannot be combined with --uninstall" >&2
@@ -186,14 +247,10 @@ else
 fi
 
 echo -e "${MAGENTA}${BOLD}"
-echo "  __  __           _             _____  _   _  _____ "
-echo " |  \/  |         | |           |  __ \| \ | |/ ____|"
-echo " | \  / | __ _ ___| |_ ___ _ __ | |  | |  \| | (___  "
-echo " | |\/| |/ _\` / __| __/ _ \ '__|| |  | | . \ |\___ \ "
-echo " | |  | | (_| \__ \ ||  __/ |   | |__| | |\  |____) |"
-echo " |_|  |_|\__,_|___/\__\___|_|   |_____/|_| \_|_____/ "
 if [[ "$ACTION" == "uninstall" ]]; then
   echo -e "          StormDNS Server Auto-Uninstaller${NC}"
+elif [[ "$LOCAL_MODE" -eq 1 ]]; then
+  echo -e "          StormDNS Server Local-Installer${NC}"
 else
   echo -e "           StormDNS Server Auto-Installer${NC}"
 fi
@@ -214,6 +271,20 @@ do_uninstall() {
   if [[ -f /etc/systemd/system/stormdns.service ]]; then
     rm -f /etc/systemd/system/stormdns.service
     log_success "Removed /etc/systemd/system/stormdns.service"
+  fi
+  if [[ -f /etc/systemd/system/stormdns-egress-filter.service ]]; then
+    systemctl stop stormdns-egress-filter.service 2>/dev/null || true
+    systemctl disable stormdns-egress-filter.service >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/stormdns-egress-filter.service
+    log_success "Removed /etc/systemd/system/stormdns-egress-filter.service"
+  fi
+  if [[ -d /etc/systemd/system/stormdns.service.d ]]; then
+    rm -rf /etc/systemd/system/stormdns.service.d
+    log_success "Removed /etc/systemd/system/stormdns.service.d/"
+  fi
+  if [[ -f /usr/local/sbin/stormdns-egress-filter.sh ]]; then
+    rm -f /usr/local/sbin/stormdns-egress-filter.sh
+    log_success "Removed /usr/local/sbin/stormdns-egress-filter.sh"
   fi
   systemctl daemon-reload 2>/dev/null || true
 
@@ -236,6 +307,11 @@ do_uninstall() {
     sysctl --system >/dev/null 2>&1 || true
     log_success "Removed kernel tuning (/etc/sysctl.d/99-stormdns.conf)."
   fi
+  if [[ -f /etc/sysctl.d/99-stormdns-tuning.conf ]]; then
+    rm -f /etc/sysctl.d/99-stormdns-tuning.conf
+    sysctl --system >/dev/null 2>&1 || true
+    log_success "Removed supplementary kernel tuning (/etc/sysctl.d/99-stormdns-tuning.conf)."
+  fi
   if [[ -f /etc/security/limits.d/99-stormdns.conf ]]; then
     rm -f /etc/security/limits.d/99-stormdns.conf
     log_success "Removed file descriptor limits (/etc/security/limits.d/99-stormdns.conf)."
@@ -252,7 +328,7 @@ do_uninstall() {
   shopt -s nullglob
   local removed=0
   for f in \
-    "$INSTALL_DIR"/StormDNS_Server_Linux*_v* \
+    "$INSTALL_DIR"/StormDNS_Server_Linux* \
     "$INSTALL_DIR"/server_config.toml \
     "$INSTALL_DIR"/server_config.toml.backup \
     "$INSTALL_DIR"/server_config.toml.bak \
@@ -304,17 +380,20 @@ elif command -v yum >/dev/null 2>&1; then PM="yum";
 else log_error "No supported package manager found (apt/dnf/yum)."; fi
 
 log_header "Preparing Environment"
-log_info "Installing dependencies..."
-if [[ "$PM" == "apt" ]]; then
-  apt-get update -y >/dev/null 2>&1
-  apt-get install -y lsof net-tools wget unzip curl ca-certificates iproute2 procps irqbalance >/dev/null 2>&1
-elif [[ "$PM" == "dnf" ]]; then
-  dnf -y install lsof net-tools wget unzip curl ca-certificates iproute procps-ng irqbalance >/dev/null 2>&1
+if [[ "$LOCAL_MODE" -eq 0 ]]; then
+  log_info "Installing dependencies..."
+  if [[ "$PM" == "apt" ]]; then
+    apt-get update -y >/dev/null 2>&1
+    apt-get install -y lsof net-tools wget unzip curl ca-certificates iproute2 procps irqbalance >/dev/null 2>&1
+  elif [[ "$PM" == "dnf" ]]; then
+    dnf -y install lsof net-tools wget unzip curl ca-certificates iproute procps-ng irqbalance >/dev/null 2>&1
+  else
+    yum -y install lsof net-tools wget unzip curl ca-certificates iproute procps-ng irqbalance >/dev/null 2>&1
+  fi
 else
-  yum -y install lsof net-tools wget unzip curl ca-certificates iproute procps-ng irqbalance >/dev/null 2>&1
+  log_info "Local mode: skipping package installation."
 fi
 require_cmd ss
-require_cmd unzip
 require_cmd systemctl
 require_cmd sysctl
 log_success "System tools are ready."
@@ -626,6 +705,20 @@ net.ipv4.ip_local_port_range = 10240 65535
 EOF
 sysctl --system >/dev/null 2>&1 || log_warn "Could not fully apply sysctl settings."
 
+cat > /etc/sysctl.d/99-stormdns-tuning.conf <<'EOF'
+# StormDNS performance tuning (supplementary)
+fs.file-max = 2097152
+fs.nr_open = 2097152
+net.core.rmem_max = 33554432
+net.core.wmem_max = 33554432
+net.core.netdev_max_backlog = 16384
+net.core.somaxconn = 65535
+net.ipv4.udp_rmem_min = 16384
+net.ipv4.udp_wmem_min = 16384
+net.ipv4.ip_local_port_range = 10240 65535
+EOF
+sysctl --system >/dev/null 2>&1 || log_warn "Some supplementary sysctl values may not have applied."
+
 cat > /etc/security/limits.d/99-stormdns.conf <<'EOF'
 * soft nofile 1048576
 * hard nofile 1048576
@@ -634,54 +727,81 @@ root hard nofile 1048576
 EOF
 log_success "Kernel and file descriptor limits configured."
 
-if [[ -n "$TARGET_VERSION" ]]; then
-  log_header "Fetching Release ${TARGET_VERSION}"
+if [[ "$LOCAL_MODE" -eq 1 ]]; then
+  log_header "Locating Local Server Binary"
+  ARCH="$(uname -m)"
+
+  LOCAL_BIN="$(find_local_server_binary "$ARCH")"
+  [[ -z "$LOCAL_BIN" ]] && log_error "No StormDNS server binary found. Run 'python build.py' first."
+  log_info "Found binary: $LOCAL_BIN"
+
+  LOCAL_BIN_DIR="$(dirname "$LOCAL_BIN")"
+  if [[ "$LOCAL_BIN_DIR" != "$INSTALL_DIR" ]]; then
+    cp "$LOCAL_BIN" "$INSTALL_DIR/"
+    log_info "Copied binary to install directory."
+  fi
+  EXECUTABLE="$(basename "$LOCAL_BIN")"
+  chmod +x "$INSTALL_DIR/$EXECUTABLE"
+  log_success "Binary ready: $EXECUTABLE"
+
+  if [[ -f "$INSTALL_DIR/server_config.toml" ]]; then
+    mv -f "$INSTALL_DIR/server_config.toml" "$INSTALL_DIR/server_config.toml.backup"
+    log_info "Existing config backed up."
+  fi
+
+  LOCAL_CONFIG="$(find_local_config)"
+  if [[ -n "$LOCAL_CONFIG" && "$LOCAL_CONFIG" != "$INSTALL_DIR/server_config.toml" ]]; then
+    cp "$LOCAL_CONFIG" "$INSTALL_DIR/server_config.toml"
+    log_info "Config copied from: $LOCAL_CONFIG"
+  elif [[ ! -f "$INSTALL_DIR/server_config.toml" ]]; then
+    log_error "No server_config.toml or server_config.toml.simple found. Cannot install."
+  fi
 else
-  log_header "Fetching Latest Release"
+  if [[ -n "$TARGET_VERSION" ]]; then
+    log_header "Fetching Release ${TARGET_VERSION}"
+  else
+    log_header "Fetching Latest Release"
+  fi
+  ARCH="$(uname -m)"
+  select_release_artifact "$ARCH" "$TARGET_VERSION"
+
+  if [[ -f "server_config.toml" ]]; then
+    mv -f server_config.toml server_config.toml.backup
+    log_info "Existing config backed up."
+  fi
+
+  log_info "Downloading server binaries..."
+  require_cmd curl
+  require_cmd unzip
+  if ! DOWNLOAD_DIR="$(mktemp -d /tmp/stormdns_download.XXXXXX 2>/dev/null)"; then
+    DOWNLOAD_DIR="$(mktemp -d "$INSTALL_DIR/stormdns_download.XXXXXX" 2>/dev/null || true)"
+  fi
+  [[ -n "${DOWNLOAD_DIR:-}" && -d "${DOWNLOAD_DIR:-}" ]] || log_error "Failed to create temporary download directory. Check free space and /tmp permissions."
+  ZIP_PATH="${DOWNLOAD_DIR}/server.zip"
+
+  if ! curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 -o "$ZIP_PATH" "$URL"; then
+    log_warn "curl download failed, trying wget..."
+    wget -qO "$ZIP_PATH" "$URL" || {
+      log_warn "Disk usage snapshot:"
+      df -h "$INSTALL_DIR" /tmp 2>/dev/null || true
+      log_error "Download failed."
+    }
+  fi
+
+  [[ -s "$ZIP_PATH" ]] || log_error "Downloaded archive is missing or empty: $ZIP_PATH"
+  unzip -q -o "$ZIP_PATH" -d "$INSTALL_DIR" || log_error "Failed to extract archive."
+  log_success "Files extracted."
+
+  EXECUTABLE="$(ls -t ${PREFIX}_v* 2>/dev/null | head -n1 || true)"
+  [[ -z "$EXECUTABLE" ]] && log_error "Binary not found in package."
+  chmod +x "$EXECUTABLE"
 fi
-ARCH="$(uname -m)"
-select_release_artifact "$ARCH" "$TARGET_VERSION"
-
-if [[ -f "server_config.toml" ]]; then
-  mv -f server_config.toml server_config.toml.backup
-  log_info "Existing config backed up."
-fi
-
-log_info "Downloading server binaries..."
-if ! DOWNLOAD_DIR="$(mktemp -d /tmp/stormdns_download.XXXXXX 2>/dev/null)"; then
-  DOWNLOAD_DIR="$(mktemp -d "$INSTALL_DIR/stormdns_download.XXXXXX" 2>/dev/null || true)"
-fi
-[[ -n "${DOWNLOAD_DIR:-}" && -d "${DOWNLOAD_DIR:-}" ]] || log_error "Failed to create temporary download directory. Check free space and /tmp permissions."
-ZIP_PATH="${DOWNLOAD_DIR}/server.zip"
-
-if ! curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 -o "$ZIP_PATH" "$URL"; then
-  log_warn "curl download failed, trying wget..."
-  wget -qO "$ZIP_PATH" "$URL" || {
-    log_warn "Disk usage snapshot:"
-    df -h "$INSTALL_DIR" /tmp 2>/dev/null || true
-    log_error "Download failed."
-  }
-fi
-
-[[ -s "$ZIP_PATH" ]] || log_error "Downloaded archive is missing or empty: $ZIP_PATH"
-unzip -q -o "$ZIP_PATH" -d "$INSTALL_DIR" || log_error "Failed to extract archive."
-log_success "Files extracted."
-
-EXECUTABLE="$(ls -t ${PREFIX}_v* 2>/dev/null | head -n1 || true)"
-[[ -z "$EXECUTABLE" ]] && log_error "Binary not found in package."
-chmod +x "$EXECUTABLE"
-shopt -s nullglob
-for old_bin in ${PREFIX}_v*; do
-  [[ "$old_bin" == "$EXECUTABLE" ]] && continue
-  rm -f -- "$old_bin"
-done
-shopt -u nullglob
 
 log_header "Configuration"
-[[ -f "server_config.toml" ]] || log_error "server_config.toml not found after extraction."
+[[ -f "server_config.toml" ]] || log_error "server_config.toml not found."
 CURRENT_VERSION="$(extract_config_version server_config.toml)"
 if [[ -z "${CURRENT_VERSION:-}" ]]; then
-  log_error "Downloaded server_config.toml is invalid (CONFIG_VERSION missing)."
+  log_error "server_config.toml is invalid (CONFIG_VERSION missing)."
 fi
 if [[ -f "server_config.toml.backup" ]]; then
   BACKUP_VERSION="$(extract_config_version server_config.toml.backup)"
@@ -699,7 +819,7 @@ if [[ -f "server_config.toml.backup" ]]; then
     log_warn "Previous config renamed to: $OLD_CFG_NAME"
     log_info "Using fresh config template; please set DOMAIN and other required fields."
   else
-    log_error "Backup config version is newer than package config (backup=$BACKUP_VERSION, new=$CURRENT_VERSION). Merge manually."
+    log_error "Backup config version is newer than the config template (backup=$BACKUP_VERSION, new=$CURRENT_VERSION). Merge manually."
   fi
 fi
 
@@ -736,6 +856,40 @@ echo -e "${GREEN}${BOLD}------------------------------------------------------"
 echo -e "  YOUR ENCRYPTION KEY: ${NC}${CYAN}$(cat encrypt_key.txt 2>/dev/null)${NC}"
 echo -e "${GREEN}${BOLD}------------------------------------------------------${NC}"
 
+log_header "Installing Egress Filter (Block Outbound TCP/53)"
+cat > /usr/local/sbin/stormdns-egress-filter.sh <<'FILTER'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v iptables >/dev/null 2>&1; then
+  iptables -C OUTPUT -p tcp --dport 53 -j REJECT --reject-with tcp-reset 2>/dev/null || \
+  iptables -I OUTPUT 1 -p tcp --dport 53 -j REJECT --reject-with tcp-reset
+fi
+
+if command -v ip6tables >/dev/null 2>&1; then
+  ip6tables -C OUTPUT -p tcp --dport 53 -j REJECT --reject-with tcp-reset 2>/dev/null || \
+  ip6tables -I OUTPUT 1 -p tcp --dport 53 -j REJECT --reject-with tcp-reset || true
+fi
+FILTER
+chmod +x /usr/local/sbin/stormdns-egress-filter.sh
+
+cat > /etc/systemd/system/stormdns-egress-filter.service <<'SERVICE'
+[Unit]
+Description=StormDNS egress filter - reject outbound TCP/53
+After=network.target
+Before=stormdns.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/stormdns-egress-filter.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+log_success "Egress filter installed."
+
 log_header "Installing System Service"
 SVC="/etc/systemd/system/stormdns.service"
 cat > "$SVC" <<EOF
@@ -764,6 +918,26 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
+
+mkdir -p /etc/systemd/system/stormdns.service.d
+
+cat > /etc/systemd/system/stormdns.service.d/10-stormdns-tuning.conf <<'DROPIN'
+[Unit]
+Wants=stormdns-egress-filter.service
+After=stormdns-egress-filter.service
+DROPIN
+
+systemctl daemon-reload
+systemctl enable --now stormdns-egress-filter.service
+
+log_success "Egress filter enabled."
+
+log_info "Killing any stuck outbound TCP/53 sockets..."
+ss -K state syn-sent dport = :53 >/dev/null 2>&1 || true
+ss -K state close-wait dport = :53 >/dev/null 2>&1 || true
+ss -6 -K state syn-sent dport = :53 >/dev/null 2>&1 || true
+ss -6 -K state close-wait dport = :53 >/dev/null 2>&1 || true
+
 systemctl enable stormdns >/dev/null 2>&1
 systemctl restart stormdns
 
@@ -773,6 +947,15 @@ if ! systemctl is-active --quiet stormdns; then
 fi
 
 log_success "StormDNS service is running."
+
+log_info "Cleaning up old server binaries..."
+shopt -s nullglob
+for old_bin in "$INSTALL_DIR"/StormDNS_Server_Linux*; do
+  [[ "$(basename "$old_bin")" == "$EXECUTABLE" ]] && continue
+  rm -f -- "$old_bin"
+  log_info "Removed old binary: $(basename "$old_bin")"
+done
+shopt -u nullglob
 
 echo -e "\n${CYAN}======================================================${NC}"
 echo -e " ${GREEN}${BOLD}       INSTALLATION COMPLETED SUCCESSFULLY!${NC}"
