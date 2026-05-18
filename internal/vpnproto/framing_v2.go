@@ -131,3 +131,60 @@ func V2TypeName(t uint8) string {
 	}
 	return fmt.Sprintf("V2_UNKNOWN(0x%02x)", t)
 }
+
+// ----- Multi-frame packing (spec §5.4) -----
+
+const v2PackedFrameLenPrefix = 2 // big-endian uint16
+
+// ErrV2PackBudgetExceeded is returned by PackV2 if the first frame
+// alone exceeds the supplied byte budget (we never partially pack).
+var ErrV2PackBudgetExceeded = errors.New("vpnproto: v2 frame exceeds pack budget")
+
+// PackV2 serialises a slice of v2 frames into a single byte blob using
+// length-prefixed concatenation. budget caps the total output size; PackV2
+// packs as many frames as fit (in order) and returns the rest implicitly
+// by truncating.
+func PackV2(frames []V2Frame, budget int) ([]byte, error) {
+	if len(frames) == 0 {
+		return nil, nil
+	}
+	out := make([]byte, 0, budget)
+	for i, f := range frames {
+		one := f.Marshal()
+		need := v2PackedFrameLenPrefix + len(one)
+		if i == 0 && need > budget {
+			return nil, ErrV2PackBudgetExceeded
+		}
+		if len(out)+need > budget {
+			break
+		}
+		prefix := []byte{byte(len(one) >> 8), byte(len(one))}
+		out = append(out, prefix...)
+		out = append(out, one...)
+	}
+	return out, nil
+}
+
+// UnpackV2 reverses PackV2. Truncated input returns whatever frames
+// were fully decoded, followed by ErrShortV2Frame.
+func UnpackV2(buf []byte) ([]V2Frame, error) {
+	var out []V2Frame
+	i := 0
+	for i < len(buf) {
+		if i+v2PackedFrameLenPrefix > len(buf) {
+			return out, ErrShortV2Frame
+		}
+		n := int(buf[i])<<8 | int(buf[i+1])
+		i += v2PackedFrameLenPrefix
+		if i+n > len(buf) {
+			return out, ErrShortV2Frame
+		}
+		var f V2Frame
+		if err := f.Unmarshal(buf[i : i+n]); err != nil {
+			return out, err
+		}
+		out = append(out, f)
+		i += n
+	}
+	return out, nil
+}
