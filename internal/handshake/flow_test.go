@@ -22,14 +22,14 @@ func TestHandshakeRoundTrip(t *testing.T) {
 
 	// Client builds INIT; returns its ClientRandom so the server side
 	// can derive the correct nonce without a v2 frame header yet.
-	cState, initEnvelope, err := ClientStart(psk, 0, time.Now().UTC(), nil)
+	cState, initEnvelope, err := ClientStart(psk, 0, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("ClientStart: %v", err)
 	}
 
 	// Server receives INIT. clientRandom is passed explicitly (in production
 	// it comes from the outer v2 frame header — see Task 11).
-	sState, ackEnvelope, err := ServerAccept(psk, initEnvelope, cState.ClientRandom, nil)
+	sState, ackEnvelope, err := ServerAccept(psk, initEnvelope, cState.ClientRandom)
 	if err != nil {
 		t.Fatalf("ServerAccept: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestHandshakeRoundTrip(t *testing.T) {
 // server uses a different PSK than the client.
 func TestHandshakeRejectsBadPSK(t *testing.T) {
 	cState, initEnvelope, err := ClientStart(
-		bytes.Repeat([]byte{0xAA}, 32), 0, time.Now().UTC(), nil)
+		bytes.Repeat([]byte{0xAA}, 32), 0, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("ClientStart: %v", err)
 	}
@@ -64,7 +64,6 @@ func TestHandshakeRejectsBadPSK(t *testing.T) {
 		bytes.Repeat([]byte{0xBB}, 32),
 		initEnvelope,
 		cState.ClientRandom,
-		nil,
 	)
 	if err == nil {
 		t.Fatal("ServerAccept must fail under wrong PSK")
@@ -75,17 +74,17 @@ func TestHandshakeRejectsBadPSK(t *testing.T) {
 // by ServerAcceptWithReplay.
 func TestHandshakeRejectsReplay(t *testing.T) {
 	psk := bytes.Repeat([]byte{0x99}, 32)
-	cState, env, err := ClientStart(psk, 0, time.Now().UTC(), nil)
+	cState, env, err := ClientStart(psk, 0, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("ClientStart: %v", err)
 	}
 	cache := NewReplayCache(time.Minute, 1024)
 	now := time.Now()
 
-	if _, _, err := ServerAcceptWithReplay(psk, env, cState.ClientRandom, nil, cache, now); err != nil {
+	if _, _, err := ServerAcceptWithReplay(psk, env, cState.ClientRandom, cache, now); err != nil {
 		t.Fatalf("first accept: %v", err)
 	}
-	if _, _, err := ServerAcceptWithReplay(psk, env, cState.ClientRandom, nil, cache, now); err == nil {
+	if _, _, err := ServerAcceptWithReplay(psk, env, cState.ClientRandom, cache, now); err == nil {
 		t.Fatal("replayed INIT must be rejected")
 	}
 }

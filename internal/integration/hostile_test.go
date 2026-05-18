@@ -38,7 +38,7 @@ func TestHostile_HandshakeUnderLoss(t *testing.T) {
 		}
 		cr := v2.EncryptedPayload[:16]
 		env := v2.EncryptedPayload[16:]
-		ack, sess, err := reg.AcceptInit(env, cr, nil, time.Now())
+		ack, sess, err := reg.AcceptInit(env, cr, time.Now())
 		if err != nil {
 			return nil
 		}

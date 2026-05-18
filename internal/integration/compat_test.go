@@ -48,7 +48,7 @@ func newV2Server(t *testing.T, psk []byte, acceptV2 bool) (string, *udpserver.V2
 			}
 			cr := v2.EncryptedPayload[:16]
 			env := v2.EncryptedPayload[16:]
-			ack, sess, err := reg.AcceptInit(env, cr, nil, time.Now())
+			ack, sess, err := reg.AcceptInit(env, cr, time.Now())
 			if err != nil {
 				continue
 			}

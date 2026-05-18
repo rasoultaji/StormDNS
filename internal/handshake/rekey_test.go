@@ -15,14 +15,12 @@ import (
 
 func TestRekey_ClientInitiatesServerResponds(t *testing.T) {
 	psk := bytes.Repeat([]byte{0x42}, 32)
-	// Reuse the corrected Task 5 flow: ClientStart/ServerAccept now take
-	// clientRandom/serverRandom as explicit params, with nil AAD ok for
-	// standalone tests.
-	cs, env, err := ClientStart(psk, 0, time.Now().UTC(), nil)
+	// Reuse the handshake flow: ClientStart/ServerAccept work without AAD.
+	cs, env, err := ClientStart(psk, 0, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("ClientStart: %v", err)
 	}
-	ss, ack, err := ServerAccept(psk, env, cs.ClientRandom, nil)
+	ss, ack, err := ServerAccept(psk, env, cs.ClientRandom)
 	if err != nil {
 		t.Fatalf("ServerAccept: %v", err)
 	}

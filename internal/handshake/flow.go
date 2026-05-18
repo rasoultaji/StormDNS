@@ -48,10 +48,9 @@ type ServerState struct {
 // seals the INIT message under PSK-AEAD.
 //
 // proposedSessionID = 0 means "server picks".
-// aad is mixed into the AEAD tag but does NOT carry the nonce random — the
-// nonce is derived from ClientRandom, which the caller must forward to the
+// The nonce is derived from ClientRandom, which the caller must forward to the
 // server out-of-band (e.g. in the outer v2 frame header).
-func ClientStart(psk []byte, proposedSessionID uint16, now time.Time, aad []byte) (*ClientState, []byte, error) {
+func ClientStart(psk []byte, proposedSessionID uint16, now time.Time) (*ClientState, []byte, error) {
 	priv, pub, err := GenerateEphemeral()
 	if err != nil {
 		return nil, nil, err
@@ -67,7 +66,7 @@ func ClientStart(psk []byte, proposedSessionID uint16, now time.Time, aad []byte
 		CapabilityBits:  capV2Default(),
 		Timestamp:       now.UTC(),
 	}
-	sealed, err := PSKAEADSeal(psk, "init", DirClient, cr, msg.Marshal(), aad)
+	sealed, err := PSKAEADSeal(psk, "init", DirClient, cr, msg.Marshal(), nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -81,21 +80,17 @@ func ClientStart(psk []byte, proposedSessionID uint16, now time.Time, aad []byte
 // (i.e. ClientState.ClientRandom). In the integrated v2 path (Task 11) this
 // comes from the outer frame header; in tests it is passed directly from the
 // ClientState returned by ClientStart.
-//
-// ackAAD is mixed into the AEAD tag of the INIT_ACK but is separate from the
-// nonce — the nonce for the ack is the freshly-generated ServerRandom exposed
-// via ServerState.ServerRandom.
-func ServerAccept(psk, initEnvelope, clientRandom, ackAAD []byte) (*ServerState, []byte, error) {
-	return serverAcceptCommon(psk, initEnvelope, clientRandom, ackAAD, nil, time.Now())
+func ServerAccept(psk, initEnvelope, clientRandom []byte) (*ServerState, []byte, error) {
+	return serverAcceptCommon(psk, initEnvelope, clientRandom, nil, time.Now())
 }
 
 // ServerAcceptWithReplay is like ServerAccept but consults a ReplayCache to
 // deduplicate INIT messages and enforces the clock-skew window from spec §6.2.
-func ServerAcceptWithReplay(psk, initEnvelope, clientRandom, ackAAD []byte, cache *ReplayCache, now time.Time) (*ServerState, []byte, error) {
-	return serverAcceptCommon(psk, initEnvelope, clientRandom, ackAAD, cache, now)
+func ServerAcceptWithReplay(psk, initEnvelope, clientRandom []byte, cache *ReplayCache, now time.Time) (*ServerState, []byte, error) {
+	return serverAcceptCommon(psk, initEnvelope, clientRandom, cache, now)
 }
 
-func serverAcceptCommon(psk, initEnvelope, clientRandom, ackAAD []byte, cache *ReplayCache, now time.Time) (*ServerState, []byte, error) {
+func serverAcceptCommon(psk, initEnvelope, clientRandom []byte, cache *ReplayCache, now time.Time) (*ServerState, []byte, error) {
 	if len(clientRandom) != 16 {
 		return nil, nil, fmt.Errorf("handshake: clientRandom must be 16 bytes, got %d", len(clientRandom))
 	}
@@ -140,7 +135,7 @@ func serverAcceptCommon(psk, initEnvelope, clientRandom, ackAAD []byte, cache *R
 		AcceptedSession: sid,
 		CapabilityBits:  capV2Default(),
 	}
-	sealed, err := PSKAEADSeal(psk, "init", DirServer, sr, ack.Marshal(), ackAAD)
+	sealed, err := PSKAEADSeal(psk, "init", DirServer, sr, ack.Marshal(), nil)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -45,9 +45,8 @@ func NewV2SessionRegistry(psk []byte) *V2SessionRegistry {
 // AcceptInit runs the server-side handshake on a fresh INIT envelope.
 // clientRandom is the 16-byte random extracted from the outer v2 frame
 // (in the integrated path that is the frame header bytes from Task 21).
-// ackAAD is optional AAD to pass to the server-side seal of INIT_ACK.
-func (r *V2SessionRegistry) AcceptInit(env []byte, clientRandom []byte, ackAAD []byte, now time.Time) ([]byte, *V2Session, error) {
-	sstate, ack, err := handshake.ServerAcceptWithReplay(r.psk, env, clientRandom, ackAAD, r.replay, now)
+func (r *V2SessionRegistry) AcceptInit(env []byte, clientRandom []byte, now time.Time) ([]byte, *V2Session, error) {
+	sstate, ack, err := handshake.ServerAcceptWithReplay(r.psk, env, clientRandom, r.replay, now)
 	if err != nil {
 		return nil, nil, err
 	}

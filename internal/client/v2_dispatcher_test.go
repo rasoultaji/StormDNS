@@ -55,7 +55,7 @@ func mkV2AuthResolverAdapter(t *testing.T, psk []byte) (string, *udpserver.V2Ses
 			}
 			cr := v2.EncryptedPayload[:16]
 			env := v2.EncryptedPayload[16:]
-			ack, sess, err := reg.AcceptInit(env, cr, nil, time.Now())
+			ack, sess, err := reg.AcceptInit(env, cr, time.Now())
 			if err != nil {
 				continue
 			}

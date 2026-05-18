@@ -22,14 +22,14 @@ func TestV2Session_HandshakeAccept(t *testing.T) {
 	reg := NewV2SessionRegistry(psk)
 
 	// ClientStart returns (*ClientState, env, err).
-	cs, env, err := handshake.ClientStart(psk, 0, time.Now().UTC(), nil)
+	cs, env, err := handshake.ClientStart(psk, 0, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("ClientStart: %v", err)
 	}
 
-	// AcceptInit takes the env + clientRandom + ackAAD.
-	// Pass nil ackAAD (server constructs its own server_random internally).
-	ack, sess, err := reg.AcceptInit(env, cs.ClientRandom, nil, time.Now())
+	// AcceptInit takes the env + clientRandom.
+	// Server constructs its own server_random internally.
+	ack, sess, err := reg.AcceptInit(env, cs.ClientRandom, time.Now())
 	if err != nil {
 		t.Fatalf("AcceptInit: %v", err)
 	}
@@ -52,12 +52,12 @@ func TestV2Session_AcceptInit_RejectsReplay(t *testing.T) {
 	psk := bytes.Repeat([]byte{0x55}, 32)
 	reg := NewV2SessionRegistry(psk)
 
-	cs, env, _ := handshake.ClientStart(psk, 0, time.Now().UTC(), nil)
-	_, _, err := reg.AcceptInit(env, cs.ClientRandom, nil, time.Now())
+	cs, env, _ := handshake.ClientStart(psk, 0, time.Now().UTC())
+	_, _, err := reg.AcceptInit(env, cs.ClientRandom, time.Now())
 	if err != nil {
 		t.Fatalf("first accept: %v", err)
 	}
-	_, _, err = reg.AcceptInit(env, cs.ClientRandom, nil, time.Now())
+	_, _, err = reg.AcceptInit(env, cs.ClientRandom, time.Now())
 	if err == nil {
 		t.Fatal("expected replay to be rejected")
 	}

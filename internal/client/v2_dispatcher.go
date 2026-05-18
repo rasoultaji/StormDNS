@@ -46,7 +46,7 @@ func RunV2Handshake(ctx context.Context, resolverAddr string, psk []byte) (*V2Cl
 // The randoms are transmitted explicitly in the payload prefix rather than
 // extracted from AAD, keeping the dispatcher decoupled from outer-frame encoding.
 func RunV2HandshakeOn(ctx context.Context, ch transport.QueryChannel, psk []byte) (*V2ClientSession, error) {
-	cs, env, err := handshake.ClientStart(psk, 0, time.Now().UTC(), nil)
+	cs, env, err := handshake.ClientStart(psk, 0, time.Now().UTC())
 	if err != nil {
 		return nil, fmt.Errorf("v2 dispatcher: ClientStart: %w", err)
 	}
