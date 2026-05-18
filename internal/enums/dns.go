@@ -79,6 +79,21 @@ const (
 
 	// Generic error packets
 	PACKET_ERROR_DROP = 0xFF // 255
+
+	// ----- v2 packet types (high-bit marker, 0x80..0xFE) -----
+	// The v1 parser rejects any Type in this range via ErrInvalidPacketType,
+	// so a v1 server safely drops v2 frames it can't speak.
+	PACKET_V2_INIT       = 0x80
+	PACKET_V2_INIT_ACK   = 0x81
+	PACKET_V2_DATA       = 0x82
+	PACKET_V2_ACK        = 0x83
+	PACKET_V2_NACK       = 0x84
+	PACKET_V2_REKEY      = 0x85
+	PACKET_V2_REKEY_ACK  = 0x86
+	PACKET_V2_PROBE      = 0x87
+	PACKET_V2_PROBE_ACK  = 0x88
+	PACKET_V2_CLOSE      = 0x89
+	PACKET_V2_PACKED     = 0x8A   // carries one or more inner v2 frames
 )
 
 const (
