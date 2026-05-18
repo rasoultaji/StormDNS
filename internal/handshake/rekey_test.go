@@ -30,7 +30,7 @@ func TestRekey_ClientInitiatesServerResponds(t *testing.T) {
 		t.Fatalf("Finish: %v", err)
 	}
 
-	rk := NewRekeyCoordinator(IsClient)
+	rk := NewRekeyCoordinator(IsClient, psk)
 	ephPub, _, err := rk.Start(cs.Keys)
 	if err != nil {
 		t.Fatalf("rekey start: %v", err)
@@ -39,7 +39,7 @@ func TestRekey_ClientInitiatesServerResponds(t *testing.T) {
 		t.Fatalf("eph pub size = %d", len(ephPub))
 	}
 
-	srk := NewRekeyCoordinator(IsServer)
+	srk := NewRekeyCoordinator(IsServer, psk)
 	peerPub, _, err := srk.HandlePeer(ss.Keys, ephPub)
 	if err != nil {
 		t.Fatalf("server handle: %v", err)
@@ -62,8 +62,9 @@ func TestRekey_ClientInitiatesServerResponds(t *testing.T) {
 }
 
 func TestRekey_CollisionClientWins(t *testing.T) {
-	rkClient := NewRekeyCoordinator(IsClient)
-	rkServer := NewRekeyCoordinator(IsServer)
+	psk := bytes.Repeat([]byte{0x42}, 32)
+	rkClient := NewRekeyCoordinator(IsClient, psk)
+	rkServer := NewRekeyCoordinator(IsServer, psk)
 
 	keys := SessionKeys{
 		ClientToServer: bytes.Repeat([]byte{1}, 32),

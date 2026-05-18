@@ -41,10 +41,13 @@ type RekeyCoordinator struct {
 	ourRandom []byte
 	peerPub   []byte
 	newKeys   SessionKeys
+	psk       []byte
 }
 
-func NewRekeyCoordinator(role Role) *RekeyCoordinator {
-	return &RekeyCoordinator{role: role}
+func NewRekeyCoordinator(role Role, psk []byte) *RekeyCoordinator {
+	// Defensive copy of PSK to prevent external mutation
+	pskCopy := append([]byte(nil), psk...)
+	return &RekeyCoordinator{role: role, psk: pskCopy}
 }
 
 func (r *RekeyCoordinator) Start(current SessionKeys) (ourPub []byte, sealedMsg []byte, err error) {
@@ -155,5 +158,5 @@ func (r *RekeyCoordinator) deriveFromHandshakeStyle() (SessionKeys, error) {
 	// Split the 32-byte DH into two 16-byte chunks that both sides agree on.
 	saltBytes := dh[:16]
 	salt2 := dh[16:32]
-	return DeriveSessionKeys([]byte("rekey-psk-substitute"), dh, saltBytes, salt2)
+	return DeriveSessionKeys(r.psk, dh, saltBytes, salt2)
 }
