@@ -478,6 +478,77 @@ func (c ServerConfig) EncryptionKeyPath() string {
 	return filepath.Join(c.ConfigDir, c.EncryptionKeyFile)
 }
 
+// ServerSectionV2 is the [server] section used in v2 server configs.
+type ServerSectionV2 struct {
+	Host              string `toml:"host"`
+	EncryptionKeyFile string `toml:"encryption_key_file"`
+}
+
+// ServerProtocolV2 is the [protocol] section of the v2 server config.
+type ServerProtocolV2 struct {
+	Accept []string `toml:"accept"`
+}
+
+// ServerAuthV2 is the [auth] section of the v2 server config.
+type ServerAuthV2 struct {
+	Domains []string `toml:"domains"`
+}
+
+// ServerV2AntiDPI is the [v2.antidpi] sub-section of the v2 server config.
+type ServerV2AntiDPI struct {
+	AllowRRTypes  []string `toml:"allow_rrtypes"`
+	AcceptPadding bool     `toml:"accept_padding"`
+}
+
+// ServerV2Block is the [v2] section of the v2 server config.
+type ServerV2Block struct {
+	DataEncryption string          `toml:"data_encryption"`
+	RekeyBytes     string          `toml:"rekey_bytes"`
+	RekeyInterval  string          `toml:"rekey_interval"`
+	AntiDPI        ServerV2AntiDPI `toml:"antidpi"`
+}
+
+// ServerConfigV2 is the new sectioned v2 server configuration schema.
+// It is independent of the legacy flat ServerConfig and is loaded via
+// LoadServerConfigFromString (decode-only, no file I/O or strict validation).
+type ServerConfigV2 struct {
+	Server   ServerSectionV2   `toml:"server"`
+	Protocol ServerProtocolV2  `toml:"protocol"`
+	Auth     ServerAuthV2      `toml:"auth"`
+	V2       ServerV2Block     `toml:"v2"`
+}
+
+// applyV2Defaults fills in sensible defaults on a ServerConfigV2 after Unmarshal.
+func (cfg *ServerConfigV2) applyV2Defaults() {
+	if len(cfg.Protocol.Accept) == 0 {
+		cfg.Protocol.Accept = []string{"v1", "v2"}
+	}
+	if cfg.V2.DataEncryption == "" {
+		cfg.V2.DataEncryption = "chacha20poly1305"
+	}
+	if cfg.V2.RekeyBytes == "" {
+		cfg.V2.RekeyBytes = "256MB"
+	}
+	if cfg.V2.RekeyInterval == "" {
+		cfg.V2.RekeyInterval = "1h"
+	}
+	if len(cfg.V2.AntiDPI.AllowRRTypes) == 0 {
+		cfg.V2.AntiDPI.AllowRRTypes = []string{"A", "AAAA", "HTTPS", "SVCB", "TXT"}
+	}
+}
+
+// LoadServerConfigFromString decodes a v2 server config from a TOML string,
+// applies defaults, and returns the result. It performs no file I/O and no
+// strict validation so that it can be used for unit tests and tooling.
+func LoadServerConfigFromString(body string) (*ServerConfigV2, error) {
+	var cfg ServerConfigV2
+	if _, err := toml.Decode(body, &cfg); err != nil {
+		return nil, err
+	}
+	cfg.applyV2Defaults()
+	return &cfg, nil
+}
+
 func normalizeCompressionTypeList(values []int) []int {
 	if len(values) == 0 {
 		return []int{0}

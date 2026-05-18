@@ -59,6 +59,45 @@ SUPPORTED_DOWNLOAD_COMPRESSION_TYPES = [0, 3]
 	}
 }
 
+func TestServerConfig_V2Keys(t *testing.T) {
+	body := `
+[server]
+host = "auth.example.com"
+encryption_key_file = "encrypt_key.txt"
+
+[protocol]
+accept = ["v1", "v2"]
+
+[auth]
+domains = ["a.example.com", "b.example.net"]
+
+[v2]
+data_encryption = "chacha20poly1305"
+rekey_bytes = "256MB"
+rekey_interval = "1h"
+
+[v2.antidpi]
+allow_rrtypes = ["A", "AAAA", "HTTPS", "SVCB", "TXT"]
+accept_padding = true
+`
+	cfg, err := LoadServerConfigFromString(body)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Protocol.Accept) != 2 || cfg.Protocol.Accept[1] != "v2" {
+		t.Fatalf("protocol.accept = %+v", cfg.Protocol.Accept)
+	}
+	if len(cfg.Auth.Domains) != 2 || cfg.Auth.Domains[0] != "a.example.com" {
+		t.Fatalf("auth.domains = %+v", cfg.Auth.Domains)
+	}
+	if cfg.V2.DataEncryption != "chacha20poly1305" {
+		t.Fatalf("v2.data_encryption = %q", cfg.V2.DataEncryption)
+	}
+	if !cfg.V2.AntiDPI.AcceptPadding {
+		t.Fatalf("expected accept_padding = true")
+	}
+}
+
 func TestServerConfigFlagBinderBuildsOverridesForSetFlagsOnly(t *testing.T) {
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	binder, err := NewServerConfigFlagBinder(fs)
