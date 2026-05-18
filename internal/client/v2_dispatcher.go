@@ -81,3 +81,22 @@ func RunV2HandshakeOn(ctx context.Context, ch transport.QueryChannel, psk []byte
 	}
 	return &V2ClientSession{SessionID: cs.SessionID, Keys: cs.Keys}, nil
 }
+
+type ChannelEntry struct {
+	Key      ResolverChannelKey
+	Channel  transport.QueryChannel
+	Inflight int
+}
+
+// BuildMultiPump constructs a MultiPump from a slice of (key, channel) entries
+// scored via the provided ResolverChannelHealth.
+func BuildMultiPump(health *ResolverChannelHealth, entries []ChannelEntry) *MultiPump {
+	mpEntries := make([]MultiPumpEntry, 0, len(entries))
+	for _, e := range entries {
+		mpEntries = append(mpEntries, MultiPumpEntry{
+			Pump:  NewV2Pump(e.Channel, e.Inflight),
+			Score: health.Score(e.Key),
+		})
+	}
+	return NewMultiPump(mpEntries)
+}
