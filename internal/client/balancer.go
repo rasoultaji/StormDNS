@@ -13,6 +13,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"stormdns-go/internal/transport"
 )
 
 const (
@@ -765,4 +767,34 @@ func xorshift64(v uint64) uint64 {
 	v ^= v >> 7
 	v ^= v << 17
 	return v
+}
+
+// ==============================================================================
+// V2 pick path — per-(resolver, channel) scoring.
+// The v1 Balancer struct and all its methods above are frozen and unchanged.
+// ==============================================================================
+
+// V2Pick is the result of PickV2: the winning (resolver, channel) pair.
+type V2Pick struct {
+	ResolverID string
+	Channel    transport.Kind
+}
+
+// PickV2 selects the highest-scoring (resolver, channel) pair from pool using
+// the supplied ResolverChannelHealth tracker.  It returns (V2Pick{}, false)
+// when every pair has a score of zero (e.g. all parked).
+func PickV2(pool []ResolverChannelKey, health *ResolverChannelHealth) (V2Pick, bool) {
+	best := V2Pick{}
+	bestScore := -1.0
+	for _, k := range pool {
+		s := health.Score(k)
+		if s > bestScore {
+			bestScore = s
+			best = V2Pick{ResolverID: k.ResolverID, Channel: k.Channel}
+		}
+	}
+	if bestScore <= 0 {
+		return V2Pick{}, false
+	}
+	return best, true
 }
