@@ -123,6 +123,19 @@ func (c *Codec) Method() int {
 	return c.method
 }
 
+// RawKey returns a copy of the derived key bytes held by the codec. The
+// returned slice is owned by the caller; mutations do not affect the codec.
+// This is used by V2SessionRegistry to share the same key material as the v1
+// codec without duplicating key-derivation logic.
+func (c *Codec) RawKey() []byte {
+	if c == nil || len(c.key) == 0 {
+		return nil
+	}
+	out := make([]byte, len(c.key))
+	copy(out, c.key)
+	return out
+}
+
 func (c *Codec) EncryptAndEncode(data []byte) (string, error) {
 	if c == nil {
 		return "", ErrInvalidCodecMethod

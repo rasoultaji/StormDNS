@@ -10,7 +10,6 @@ package udpserver
 import (
 	"errors"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
@@ -59,7 +58,9 @@ func (s *Server) handleTunnelCandidate(packet []byte, parsed DnsParser.LitePacke
 		labelSlice := strings.Split(decision.RequestName[:subdomainEnd], ".")
 		if rawBytes, err := ExtractV2FrameFromQName(labelSlice); err == nil {
 			if v2Frame := DecodeV2FrameFromQueryBytes(rawBytes); v2Frame != nil {
-				s.handleV2(nil, *v2Frame)
+				if resp := s.handleV2(packet, *v2Frame); resp != nil {
+					return resp
+				}
 				return s.buildNoDataResponseLiteLogged(packet, parsed, "v2-dispatched")
 			}
 		}
@@ -103,10 +104,72 @@ func (s *Server) handleTunnelCandidate(packet []byte, parsed DnsParser.LitePacke
 	}
 }
 
-// handleV2 is the entry point for decoded v2 frames. Stubbed for Task 21;
-// Task 22 wires in the session registry.
-func (s *Server) handleV2(remote net.Addr, f VpnProto.V2Frame) {
-	// Stubbed: Task 22 fills in v2 session dispatch logic.
-	_ = remote
-	_ = f
+// handleV2 is the entry point for decoded v2 frames. Returns a DNS response
+// byte slice when the frame produces a reply (e.g. INIT → INIT_ACK), or nil
+// when the frame is silently handled / dropped.
+//
+// requestPacket is the raw DNS query bytes and is used to copy the transaction
+// ID and RD flag into the DNS response header.
+func (s *Server) handleV2(requestPacket []byte, f VpnProto.V2Frame) []byte {
+	switch f.Header.Type {
+	case Enums.PACKET_V2_INIT:
+		return s.handleV2Init(requestPacket, f)
+	default:
+		// TODO(Phase G follow-up): handle DATA, ACK, CLOSE, etc.
+		// Non-INIT v2 frames are not yet implemented; log and drop.
+		if s.log != nil {
+			s.log.Debugf("v2: drop unhandled frame type 0x%02x (Phase G follow-up)", f.Header.Type)
+		}
+		return nil
+	}
+}
+
+// handleV2Init handles a PACKET_V2_INIT frame: runs the server-side handshake
+// via V2SessionRegistry.AcceptInit and returns a DNS response carrying the
+// INIT_ACK V2Frame, or nil on error.
+//
+// Wire convention (per spec §5.3):
+//
+//	INIT  query  EncryptedPayload = clientRandom(16) || sealed-INIT-envelope
+//	INIT_ACK reply EncryptedPayload = serverRandom(16) || sealed-INIT_ACK-envelope
+func (s *Server) handleV2Init(requestPacket []byte, f VpnProto.V2Frame) []byte {
+	const clientRandomLen = 16
+	if len(f.EncryptedPayload) < clientRandomLen {
+		if s.log != nil {
+			s.log.Debugf("v2 INIT: payload too short (%d bytes)", len(f.EncryptedPayload))
+		}
+		return nil
+	}
+
+	clientRandom := f.EncryptedPayload[:clientRandomLen]
+	env := f.EncryptedPayload[clientRandomLen:]
+
+	ack, sess, err := s.v2sessions.AcceptInit(env, clientRandom, time.Now())
+	if err != nil {
+		if s.log != nil {
+			s.log.Debugf("v2 INIT: AcceptInit failed: %v", err)
+		}
+		return nil
+	}
+
+	// Build the INIT_ACK frame: EncryptedPayload = serverRandom(16) || ack-envelope.
+	ackPayload := make([]byte, clientRandomLen+len(ack))
+	copy(ackPayload[:clientRandomLen], sess.ServerRandom)
+	copy(ackPayload[clientRandomLen:], ack)
+
+	respFrame := VpnProto.V2Frame{
+		Header: VpnProto.V2Header{
+			Type:      Enums.PACKET_V2_INIT_ACK,
+			ChCls:     f.Header.ChCls,
+			SessionID: sess.SessionID,
+			StreamID:  0,
+			SeqNum:    0,
+		},
+		EncryptedPayload: ackPayload,
+		Tag:              make([]byte, VpnProto.V2TagLen),
+	}
+
+	// Use a TXT-record DNS response so the frame bytes are stored without any
+	// A-record 4-byte padding — the AEAD ciphertext must be delivered verbatim.
+	return BuildV2RawTXTDNSResponse(requestPacket, respFrame.Marshal())
 }

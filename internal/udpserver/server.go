@@ -82,6 +82,11 @@ type Server struct {
 	pongNonce                atomic.Uint32
 	invalidDropMode          atomic.Uint32
 
+	// v2sessions is the registry for v2 handshake sessions. Populated by New
+	// via the codec's derived key so the same key material is used for both
+	// v1 and v2 encryption paths.
+	v2sessions *V2SessionRegistry
+
 	// Observability counters (Phase 8). Incremented by the corresponding
 	// hardening paths so operators can observe how often each guard fires
 	// without having to grep logs. Read via Stats(). The stream-cap
@@ -167,6 +172,7 @@ func New(cfg config.ServerConfig, log *logger.Logger, codec *security.Codec) *Se
 		cfg:                    cfg,
 		log:                    log,
 		codec:                  codec,
+		v2sessions:             NewV2SessionRegistry(codec.RawKey()),
 		domainMatcher:          domainMatcher.New(cfg.Domain, cfg.MinVPNLabelLength),
 		sessions:               newSessionStore(cfg.SessionOrphanQueueInitialCap, cfg.StreamQueueInitialCapacity, cfg.SessionInitReuseTTL(), cfg.RecentlyClosedStreamTTL(), cfg.RecentlyClosedStreamCap, cfg.MaxStreamsPerSession),
 		deferredDNSSession:     newDeferredSessionProcessor(dnsDeferredWorkers, dnsDeferredQueue, log),
