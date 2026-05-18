@@ -10,6 +10,8 @@ package udpserver
 import (
 	"errors"
 	"fmt"
+	"net"
+	"strings"
 	"time"
 
 	DnsParser "stormdns-go/internal/dnsparser"
@@ -50,6 +52,19 @@ func (s *Server) handlePacket(packet []byte) []byte {
 }
 
 func (s *Server) handleTunnelCandidate(packet []byte, parsed DnsParser.LitePacket, decision domainMatcher.Decision) []byte {
+	// v2 dispatch: extract the per-label slice from the full request name,
+	// try antidpi decoding, and classify. v1 traffic falls through unchanged.
+	if decision.BaseDomain != "" && len(decision.RequestName) > len(decision.BaseDomain)+1 {
+		subdomainEnd := len(decision.RequestName) - len(decision.BaseDomain) - 1
+		labelSlice := strings.Split(decision.RequestName[:subdomainEnd], ".")
+		if rawBytes, err := ExtractV2FrameFromQName(labelSlice); err == nil {
+			if v2Frame := DecodeV2FrameFromQueryBytes(rawBytes); v2Frame != nil {
+				s.handleV2(nil, *v2Frame)
+				return s.buildNoDataResponseLiteLogged(packet, parsed, "v2-dispatched")
+			}
+		}
+	}
+
 	vpnPacket, err := VpnProto.ParseInflatedFromLabels(decision.Labels, s.codec)
 	if err != nil {
 		if errors.Is(err, VpnProto.ErrInvalidFragmentInfo) {
@@ -86,4 +101,12 @@ func (s *Server) handleTunnelCandidate(packet []byte, parsed DnsParser.LitePacke
 	default:
 		return s.buildNoDataResponseLiteLogged(packet, parsed, fmt.Sprintf("pre-session-unhandled-%s", Enums.PacketTypeName(vpnPacket.PacketType)))
 	}
+}
+
+// handleV2 is the entry point for decoded v2 frames. Stubbed for Task 21;
+// Task 22 wires in the session registry.
+func (s *Server) handleV2(remote net.Addr, f VpnProto.V2Frame) {
+	// Stubbed: Task 22 fills in v2 session dispatch logic.
+	_ = remote
+	_ = f
 }
