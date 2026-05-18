@@ -136,8 +136,8 @@ func setupDirs() error {
 
 func buildBinaries() error {
 	bins := map[string]string{
-		"server.exe": "./cmd/server",
-		"client.exe": "./cmd/client",
+		"server.exe": "./cmd/phantom-server",
+		"client.exe": "./cmd/phantom-client",
 	}
 
 	for name, pkg := range bins {

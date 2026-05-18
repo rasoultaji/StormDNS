@@ -55,33 +55,33 @@ echo -e "${CYAN}------------------------------------------------------${NC}"
 
 require_cmd systemctl
 
-stop_existing_stormdns_client_service() {
-  if systemctl list-unit-files --all 2>/dev/null | grep -q '^stormdns-client\.service'; then
-    log_info "Stopping existing StormDNS client service..."
-    systemctl stop stormdns-client 2>/dev/null || true
+stop_existing_phantom_client_service() {
+  if systemctl list-unit-files --all 2>/dev/null | grep -q '^phantom-client\.service'; then
+    log_info "Stopping existing PhantomDNS client service..."
+    systemctl stop phantom-client 2>/dev/null || true
 
     for _ in 1 2 3 4 5; do
-      if ! systemctl is-active --quiet stormdns-client; then
+      if ! systemctl is-active --quiet phantom-client; then
         break
       fi
       sleep 1
     done
 
     local main_pid
-    main_pid="$(systemctl show stormdns-client --property MainPID --value 2>/dev/null || true)"
+    main_pid="$(systemctl show phantom-client --property MainPID --value 2>/dev/null || true)"
     if [[ -n "${main_pid:-}" && "$main_pid" != "0" ]] && kill -0 "$main_pid" 2>/dev/null; then
-      log_warn "stormdns-client service is still active. Sending SIGTERM to MainPID: $main_pid"
+      log_warn "phantom-client service is still active. Sending SIGTERM to MainPID: $main_pid"
       kill "$main_pid" 2>/dev/null || true
       sleep 2
       kill -0 "$main_pid" 2>/dev/null && kill -9 "$main_pid" 2>/dev/null || true
     fi
 
-    systemctl reset-failed stormdns-client 2>/dev/null || true
+    systemctl reset-failed phantom-client 2>/dev/null || true
   fi
 }
 
 log_header "Stopping Existing StormDNS Client"
-stop_existing_stormdns_client_service
+stop_existing_phantom_client_service
 
 log_header "Locating Client Binary"
 # The installer is bundled inside the release archive alongside the binary.
@@ -130,7 +130,7 @@ if grep -q '^STARTUP_MODE[[:space:]]*=[[:space:]]*"ask"' client_config.toml; the
 fi
 
 log_header "Installing System Service"
-SVC="/etc/systemd/system/stormdns-client.service"
+SVC="/etc/systemd/system/phantom-client.service"
 cat > "$SVC" <<EOF
 [Unit]
 Description=StormDNS Client
@@ -157,12 +157,12 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable stormdns-client >/dev/null 2>&1 || log_warn "Could not enable stormdns-client service at boot."
-systemctl restart stormdns-client
+systemctl enable phantom-client >/dev/null 2>&1 || log_warn "Could not enable phantom-client service at boot."
+systemctl restart phantom-client
 
 sleep 2
-if ! systemctl is-active --quiet stormdns-client; then
-  journalctl -u stormdns-client -n 50 --no-pager || true
+if ! systemctl is-active --quiet phantom-client; then
+  journalctl -u phantom-client -n 50 --no-pager || true
   log_error "Service failed to start. See logs above."
 fi
 
@@ -172,12 +172,12 @@ echo -e "\n${CYAN}======================================================${NC}"
 echo -e " ${GREEN}${BOLD}       INSTALLATION COMPLETED SUCCESSFULLY!${NC}"
 echo -e "${CYAN}======================================================${NC}"
 echo -e "${BOLD}Commands:${NC}"
-echo -e "  ${YELLOW}>${NC} Start:   systemctl start stormdns-client"
-echo -e "  ${YELLOW}>${NC} Stop:    systemctl stop stormdns-client"
-echo -e "  ${YELLOW}>${NC} Restart: systemctl restart stormdns-client"
-echo -e "  ${YELLOW}>${NC} Logs:    journalctl -u stormdns-client -f"
+echo -e "  ${YELLOW}>${NC} Start:   systemctl start phantom-client"
+echo -e "  ${YELLOW}>${NC} Stop:    systemctl stop phantom-client"
+echo -e "  ${YELLOW}>${NC} Restart: systemctl restart phantom-client"
+echo -e "  ${YELLOW}>${NC} Logs:    journalctl -u phantom-client -f"
 echo -e "\n${BOLD}Files:${NC}"
 echo -e "  ${YELLOW}>${NC} ${INSTALL_DIR}/client_config.toml"
 echo -e "  ${YELLOW}>${NC} ${INSTALL_DIR}/client_resolvers.txt"
 echo -e "${YELLOW}Note:${NC} Edit client_config.toml (set DOMAINS, ENCRYPTION_KEY, etc.) then run:"
-echo -e "  ${YELLOW}>${NC} systemctl restart stormdns-client"
+echo -e "  ${YELLOW}>${NC} systemctl restart phantom-client"

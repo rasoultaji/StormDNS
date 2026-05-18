@@ -81,8 +81,9 @@ def main():
     skipped = []
     
     for t in targets:
-        for component in ["client", "server"]:
-            output_name = f"dist/StormDNS_{component.capitalize()}_{t['platform']}_{t['arch']}{t['ext']}"
+        for component in ["phantom-client", "phantom-server"]:
+            label = component.split("-")[1].capitalize()  # "Client" or "Server"
+            output_name = f"dist/StormDNS_{label}_{t['platform']}_{t['arch']}{t['ext']}"
             result = build(
                 t["os"],
                 t["arch"],
