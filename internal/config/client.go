@@ -1116,6 +1116,153 @@ func (f *clientConfigStringSliceFlag) Set(value string) error {
 	return nil
 }
 
+// =============================================================================
+// v2 client config — new sectioned schema (additive; v1 ClientConfig unchanged)
+// =============================================================================
+
+// ProtocolConfig holds the [protocol] section of the v2 client config.
+type ProtocolConfig struct {
+	Version string `toml:"version"` // "v1", "v2", or "auto"
+}
+
+// DomainEntry is one element of the [domains].list array.
+type DomainEntry struct {
+	FQDN   string `toml:"fqdn"`
+	Weight int    `toml:"weight"`
+}
+
+// DomainsConfig holds the [domains] section of the v2 client config.
+type DomainsConfig struct {
+	List     []DomainEntry `toml:"list"`
+	Rotation string        `toml:"rotation"` // e.g. "per-session"
+}
+
+// TransportsConfig holds the [transports] section of the v2 client config.
+type TransportsConfig struct {
+	Allow  []string `toml:"allow"`
+	Prefer string   `toml:"prefer"`
+}
+
+// ScannerConfig holds the [scanner] section of the v2 client config.
+type ScannerConfig struct {
+	Active                bool   `toml:"active"`
+	RescanOnNetworkChange bool   `toml:"rescan_on_network_change"`
+	ParkedRecheckInterval string `toml:"parked_recheck_interval"`
+}
+
+// AntiDPIConfig holds the [antidpi] section of the v2 client config.
+type AntiDPIConfig struct {
+	LabelDictPath  string  `toml:"label_dict_path"`
+	RRTypeMix      string  `toml:"rrtype_mix"`
+	PaddingBuckets []int   `toml:"padding_buckets"`
+	JitterMeanMs   int     `toml:"jitter_mean_ms"`
+	JitterSigma    float64 `toml:"jitter_sigma"`
+}
+
+// ARQV2Config holds the [arq] section of the v2 client config (transport-level inflight limits).
+type ARQV2Config struct {
+	InflightUDP53 int `toml:"inflight_udp53"`
+	InflightDoH   int `toml:"inflight_doh"`
+	InflightDoT   int `toml:"inflight_dot"`
+	InflightDoQ   int `toml:"inflight_doq"`
+}
+
+// CompressionV2Config holds the [compression] section of the v2 client config.
+type CompressionV2Config struct {
+	Algo string `toml:"algo"`
+}
+
+// CryptoConfig holds the [crypto] section of the v2 client config.
+type CryptoConfig struct {
+	RekeyBytes    string `toml:"rekey_bytes"`
+	RekeyInterval string `toml:"rekey_interval"`
+}
+
+// ServerV2Config holds the [server] section of the v2 client config.
+type ServerV2Config struct {
+	Host              string `toml:"host"`
+	EncryptionKeyFile string `toml:"encryption_key_file"`
+}
+
+// ResolversV2Config holds the [resolvers] section of the v2 client config.
+type ResolversV2Config struct {
+	List []string `toml:"list"`
+}
+
+// ClientConfigV2 is the new sectioned v2 client configuration schema.
+// It is independent of the legacy flat ClientConfig and is loaded via
+// LoadClientConfigFromString (decode-only, no file I/O or strict validation).
+type ClientConfigV2 struct {
+	Server      ServerV2Config    `toml:"server"`
+	Resolvers   ResolversV2Config `toml:"resolvers"`
+	Protocol    ProtocolConfig    `toml:"protocol"`
+	Domains     DomainsConfig     `toml:"domains"`
+	Transports  TransportsConfig  `toml:"transports"`
+	Scanner     ScannerConfig     `toml:"scanner"`
+	AntiDPI     AntiDPIConfig     `toml:"antidpi"`
+	ARQ         ARQV2Config       `toml:"arq"`
+	Compression CompressionV2Config `toml:"compression"`
+	Crypto      CryptoConfig      `toml:"crypto"`
+}
+
+// applyV2Defaults fills in sensible defaults on a ClientConfigV2 after Unmarshal.
+func (cfg *ClientConfigV2) applyV2Defaults() {
+	if cfg.Protocol.Version == "" {
+		cfg.Protocol.Version = "auto"
+	}
+	if cfg.Domains.Rotation == "" {
+		cfg.Domains.Rotation = "per-session"
+	}
+	if len(cfg.Transports.Allow) == 0 {
+		cfg.Transports.Allow = []string{"udp53", "doh", "dot", "doq"}
+	}
+	if cfg.AntiDPI.JitterMeanMs == 0 {
+		cfg.AntiDPI.JitterMeanMs = 80
+	}
+	if cfg.AntiDPI.JitterSigma == 0 {
+		cfg.AntiDPI.JitterSigma = 0.4
+	}
+	if cfg.ARQ.InflightUDP53 == 0 {
+		cfg.ARQ.InflightUDP53 = 16
+	}
+	if cfg.ARQ.InflightDoH == 0 {
+		cfg.ARQ.InflightDoH = 64
+	}
+	if cfg.ARQ.InflightDoT == 0 {
+		cfg.ARQ.InflightDoT = 32
+	}
+	if cfg.ARQ.InflightDoQ == 0 {
+		cfg.ARQ.InflightDoQ = 128
+	}
+	if cfg.Compression.Algo == "" {
+		cfg.Compression.Algo = "lz4"
+	}
+	if cfg.Crypto.RekeyBytes == "" {
+		cfg.Crypto.RekeyBytes = "256MB"
+	}
+	if cfg.Crypto.RekeyInterval == "" {
+		cfg.Crypto.RekeyInterval = "1h"
+	}
+}
+
+// LoadClientConfigFromString decodes a v2 client config from a TOML string,
+// applies defaults, and returns the result. It performs no file I/O and no
+// strict validation so that it can be used for unit tests and tooling.
+// If both server.host and domains.list are set, domains.list takes precedence.
+// If only server.host is set and domains.list is empty, server.host is promoted
+// to a single DomainEntry with weight 1.
+func LoadClientConfigFromString(body string) (*ClientConfigV2, error) {
+	var cfg ClientConfigV2
+	if _, err := toml.Decode(body, &cfg); err != nil {
+		return nil, err
+	}
+	cfg.applyV2Defaults()
+	if cfg.Server.Host != "" && len(cfg.Domains.List) == 0 {
+		cfg.Domains.List = []DomainEntry{{FQDN: cfg.Server.Host, Weight: 1}}
+	}
+	return &cfg, nil
+}
+
 func clampInt(value int, minValue int, maxValue int) int {
 	if value < minValue {
 		return minValue

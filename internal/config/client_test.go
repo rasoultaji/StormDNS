@@ -375,6 +375,87 @@ MAX_DOWNLOAD_MTU = 140
 	}
 }
 
+func TestClientConfig_V2KeysAdditive(t *testing.T) {
+	tomlBody := `
+[server]
+host = "auth.example.com"
+encryption_key_file = "client_key.txt"
+
+[protocol]
+version = "auto"
+
+[domains]
+list = [
+  { fqdn = "a.example.com", weight = 1 },
+  { fqdn = "b.example.net", weight = 2 },
+]
+rotation = "per-session"
+
+[transports]
+allow = ["udp53", "doh", "dot", "doq"]
+prefer = "auto"
+
+[scanner]
+active = false
+rescan_on_network_change = true
+
+[antidpi]
+rrtype_mix = "auto"
+jitter_mean_ms = 80
+jitter_sigma = 0.4
+
+[arq]
+inflight_udp53 = 16
+inflight_doh = 64
+inflight_dot = 32
+inflight_doq = 128
+
+[compression]
+algo = "lz4"
+
+[crypto]
+rekey_bytes = "256MB"
+rekey_interval = "1h"
+`
+	cfg, err := LoadClientConfigFromString(tomlBody)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Protocol.Version != "auto" {
+		t.Fatalf("protocol.version = %q", cfg.Protocol.Version)
+	}
+	if len(cfg.Domains.List) != 2 || cfg.Domains.List[0].FQDN != "a.example.com" {
+		t.Fatalf("domains.list = %+v", cfg.Domains.List)
+	}
+	if cfg.Domains.List[1].Weight != 2 {
+		t.Fatalf("weight not parsed")
+	}
+	if cfg.Compression.Algo != "lz4" {
+		t.Fatalf("compression.algo = %q", cfg.Compression.Algo)
+	}
+	if cfg.ARQ.InflightDoH != 64 {
+		t.Fatalf("arq.inflight_doh = %d", cfg.ARQ.InflightDoH)
+	}
+}
+
+func TestClientConfig_V1OnlyStillWorks(t *testing.T) {
+	tomlBody := `
+[server]
+host = "auth.example.com"
+encryption_key_file = "client_key.txt"
+
+[resolvers]
+list = ["1.1.1.1", "8.8.8.8"]
+`
+	cfg, err := LoadClientConfigFromString(tomlBody)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Protocol.Version == "" {
+		t.Fatalf("expected protocol.version default, got empty")
+	}
+}
+
 func TestClientConfigFlagBinderBuildsOverridesForSetFlagsOnly(t *testing.T) {
 	fs := flag.NewFlagSet("client", flag.ContinueOnError)
 	binder, err := NewClientConfigFlagBinder(fs)
